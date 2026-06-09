@@ -7,7 +7,7 @@
 
 ## About
 
-An interactive WebGIS dashboard built to visualize stormwater drainage analysis results for a commercial development project in Dallas, TX. Developed as part of a full drainage engineering study submitted to the City of Dallas.
+An interactive WebGIS dashboard built to visualize stormwater drainage analysis results for a commercial development project in Dallas, TX. Developed as part of a full drainage engineering study.
 
 The dashboard turns static engineering calculations into an interactive map that clients and reviewers can explore directly in a browser — no software required.
 
