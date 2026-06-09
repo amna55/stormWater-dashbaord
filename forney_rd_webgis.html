@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watershed Dashboard — 8414 Forney Rd, Dallas TX</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f5f5f0; color:#1a1a1a; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  .header { background:white; border-bottom:1px solid #e0e0da; padding:10px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; flex-shrink:0; }
+  .header-left h1 { font-size:15px; font-weight:600; }
+  .header-left p { font-size:11px; color:#888; margin-top:2px; }
+  .badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .badge { font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; }
+  .badge-green { background:#e1f5ee; color:#0f6e56; }
+  .badge-red { background:#fcebeb; color:#a32d2d; }
+  .badge-blue { background:#e6f1fb; color:#185fa5; }
+  .metrics { display:grid; grid-template-columns:repeat(4,1fr); background:#e0e0da; gap:1px; border-bottom:1px solid #e0e0da; flex-shrink:0; }
+  .metric { background:white; padding:8px 16px; }
+  .metric-val { font-size:20px; font-weight:600; }
+  .metric-label { font-size:11px; color:#888; margin-top:1px; }
+  .body { display:flex; flex:1; min-height:0; }
+  #map { flex:1; }
+  .sidebar { width:270px; background:white; border-left:1px solid #e0e0da; overflow-y:auto; flex-shrink:0; }
+  .panel { border-bottom:1px solid #f0f0ea; padding:12px 14px; }
+  .panel-title { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#999; margin-bottom:8px; }
+  .storm-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .storm-btn { padding:6px; text-align:center; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid #e0e0da; background:#f5f5f0; color:#666; transition:all 0.15s; }
+  .storm-btn:hover { background:#e8e8e2; }
+  .storm-btn.active { background:#e1f5ee; color:#0f6e56; border-color:#1d9e75; }
+  .result-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f5f5f0; font-size:12px; }
+  .result-row:last-child { border:none; }
+  .rl { color:#999; }
+  .rv { font-weight:600; }
+  .toggle-row { display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:12px; }
+  .tog { position:relative; width:32px; height:18px; flex-shrink:0; }
+  .tog input { opacity:0; width:0; height:0; }
+  .tog-sl { position:absolute; cursor:pointer; inset:0; background:#ccc; border-radius:18px; transition:.2s; }
+  .tog-sl:before { position:absolute; content:""; height:12px; width:12px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.2s; }
+  input:checked+.tog-sl { background:#1d9e75; }
+  input:checked+.tog-sl:before { transform:translateX(14px); }
+  .node-card { background:#f9f9f7; border-radius:6px; padding:8px 10px; margin-bottom:6px; border-left:3px solid #ccc; }
+  .node-card.teal { border-left-color:#1d9e75; }
+  .node-card.coral { border-left-color:#d85a30; }
+  .node-card.gray { border-left-color:#999; }
+  .node-card.amber { border-left-color:#854f0b; }
+  .nt { font-size:12px; font-weight:600; }
+  .ns { font-size:11px; color:#999; margin-top:1px; }
+  .nd { font-size:11px; color:#666; margin-top:4px; line-height:1.5; }
+  .pipe-row { display:flex; align-items:center; gap:7px; padding:4px 0; font-size:12px; border-bottom:1px solid #f5f5f0; }
+  .pipe-row:last-child { border:none; }
+  .pdot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .pname { flex:1; color:#666; }
+  .psz { font-weight:600; }
+  .ok { color:#0f6e56; font-size:11px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Watershed & Storm Sewer Dashboard</h1>
+    <p>8414 Forney Road · Dallas, Texas · DEV Tracking No. PAV-DRNG-26-000005</p>
+  </div>
+  <div class="badges">
+    <span class="badge badge-green">Pre-dev Q: 237.7 CFS</span>
+    <span class="badge badge-red">Post-dev Q: 406.5 CFS</span>
+    <span class="badge badge-blue">FEMA Zone AE / X</span>
+  </div>
+</div>
+
+<div class="metrics">
+  <div class="metric"><div class="metric-val" style="color:#1d9e75;">3.716</div><div class="metric-label">Watershed area (acres)</div></div>
+  <div class="metric"><div class="metric-val" style="color:#185fa5;">6.96</div><div class="metric-label">Lot design Q (CFS)</div></div>
+  <div class="metric"><div class="metric-val" style="color:#854f0b;">24%</div><div class="metric-label">Impervious cover</div></div>
+  <div class="metric"><div class="metric-val" style="color:#a32d2d;" id="hdr-q">406.5</div><div class="metric-label">Peak Q — <span id="hdr-storm">100-yr</span> (CFS)</div></div>
+</div>
+
+<div class="body">
+  <div id="map"></div>
+  <div class="sidebar">
+
+    <div class="panel">
+      <div class="panel-title">Storm Event</div>
+      <div class="storm-grid">
+        <div class="storm-btn" id="s2" onclick="setStorm(2)">2-year</div>
+        <div class="storm-btn" id="s10" onclick="setStorm(10)">10-year</div>
+        <div class="storm-btn" id="s50" onclick="setStorm(50)">50-year</div>
+        <div class="storm-btn active" id="s100" onclick="setStorm(100)">100-year</div>
+      </div>
+      <div style="margin-top:8px;">
+        <div class="result-row"><span class="rl">Rainfall depth (24-hr)</span><span class="rv" id="r-depth">9.69 in</span></div>
+        <div class="result-row"><span class="rl">Watershed peak Q</span><span class="rv" id="r-wsq">406.5 CFS</span></div>
+        <div class="result-row"><span class="rl">Lot Q — System 1</span><span class="rv" id="r-lotq">6.96 CFS</span></div>
+        <div class="result-row"><span class="rl">Roof Q — System 2</span><span class="rv" id="r-roofq">2.12 CFS</span></div>
+        <div class="result-row"><span class="rl">Tc (System 1)</span><span class="rv">10 min (min.)</span></div>
+        <div class="result-row"><span class="rl">CN post-dev</span><span class="rv">93</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Map Layers</div>
+      <div class="toggle-row"><span>Lot boundary</span><label class="tog"><input type="checkbox" id="tog-lot" checked onchange="toggleLayer('lot',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Watershed boundary</span><label class="tog"><input type="checkbox" id="tog-ws" checked onchange="toggleLayer('ws',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Prairie Creek</span><label class="tog"><input type="checkbox" id="tog-creek" checked onchange="toggleLayer('creek',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Railway</span><label class="tog"><input type="checkbox" id="tog-rail" checked onchange="toggleLayer('rail',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Entrance road</span><label class="tog"><input type="checkbox" id="tog-road" checked onchange="toggleLayer('road',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Pipe network</span><label class="tog"><input type="checkbox" id="tog-pipes" checked onchange="toggleLayer('pipes',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>FEMA Zone AE</span><label class="tog"><input type="checkbox" id="tog-fema" checked onchange="toggleLayer('fema',this.checked)"><span class="tog-sl"></span></label></div>
+      <div class="toggle-row"><span>Nodes / inlets</span><label class="tog"><input type="checkbox" id="tog-nodes" checked onchange="toggleLayer('nodes',this.checked)"><span class="tog-sl"></span></label></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Nodes</div>
+      <div class="node-card teal"><div class="nt">CB #1 — NW Grate Inlet</div><div class="ns">System 1 — Driveway</div><div class="nd">RIM 525.01 · INV OUT 520.75<br>Q = 6.96 CFS · 18" HDPE out</div></div>
+      <div class="node-card coral"><div class="nt">CB #2 — NE Curb Inlet</div><div class="ns">System 2 — Roof drainage</div><div class="nd">RIM 525.68 · INV OUT 520.05<br>Q = 2.12 CFS · 12" HDPE out</div></div>
+      <div class="node-card gray"><div class="nt">JB #1 — Junction Box NW</div><div class="ns">HDPE → Concrete transition</div><div class="nd">18" HDPE in → 18" Concrete out</div></div>
+      <div class="node-card gray"><div class="nt">JB #2 — Junction Box NE</div><div class="ns">HDPE → Concrete transition</div><div class="nd">12" HDPE in → 12" Concrete out</div></div>
+      <div class="node-card amber"><div class="nt">Outfall — 21" Public Main</div><div class="ns">Forney Rd — Both systems</div><div class="nd">BM 524.89 · Total Q = 9.08 CFS</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Pipe Sizing</div>
+      <div class="pipe-row"><div class="pdot" style="background:#378add;"></div><div class="pname">NW HDPE (CB1 → JB1)</div><div class="psz">18"</div><div class="ok">✓</div></div>
+      <div class="pipe-row"><div class="pdot" style="background:#185fa5;"></div><div class="pname">NW Concrete (JB1 → Out)</div><div class="psz">18"</div><div class="ok">✓</div></div>
+      <div class="pipe-row"><div class="pdot" style="background:#d85a30;"></div><div class="pname">NE HDPE (CB2 → JB2)</div><div class="psz">12"</div><div class="ok">✓</div></div>
+      <div class="pipe-row"><div class="pdot" style="background:#993c1d;"></div><div class="pname">NE Concrete (JB2 → Out)</div><div class="psz">12"</div><div class="ok">✓</div></div>
+      <div class="pipe-row"><div class="pdot" style="background:#854f0b;"></div><div class="pname">Existing public main</div><div class="psz">21"</div><div class="ok">✓</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Reference</div>
+      <div style="font-size:11px;color:#999;line-height:1.9;">
+        <div>City of Dallas DDM (September 2019)</div>
+        <div>NOAA Atlas 14, Vol. 11, Dallas County</div>
+        <div>CE Consulting LLC — Sheet C1.0, C05.01</div>
+        <div>HEC-HMS · Rational Method · Manning's Eq.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var stormData = {
+  2:   { depth:'4.05 in', wsQ:'237.7 CFS', lotQ:'4.21 CFS', roofQ:'1.28 CFS' },
+  10:  { depth:'6.06 in', wsQ:'312.4 CFS', lotQ:'5.48 CFS', roofQ:'1.68 CFS' },
+  50:  { depth:'8.51 in', wsQ:'374.2 CFS', lotQ:'6.32 CFS', roofQ:'1.94 CFS' },
+  100: { depth:'9.69 in', wsQ:'406.5 CFS', lotQ:'6.96 CFS', roofQ:'2.12 CFS' }
+};
+
+function setStorm(s) {
+  [2,10,50,100].forEach(function(n){ document.getElementById('s'+n).classList.remove('active'); });
+  document.getElementById('s'+s).classList.add('active');
+  var d = stormData[s];
+  document.getElementById('r-depth').textContent = d.depth;
+  document.getElementById('r-wsq').textContent = d.wsQ;
+  document.getElementById('r-lotq').textContent = d.lotQ;
+  document.getElementById('r-roofq').textContent = d.roofQ;
+  document.getElementById('hdr-q').textContent = d.wsQ.replace(' CFS','');
+  document.getElementById('hdr-storm').textContent = s+'-yr';
+}
+
+// Map centered on lot centroid from KML
+var map = L.map('map').setView([32.77722, -96.67531], 18);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'&copy; OpenStreetMap contributors', maxZoom:21
+}).addTo(map);
+
+// ── REAL KML COORDINATES ──────────────────────────────
+
+// Lot boundary (from KML "area")
+var lotCoords = [
+  [32.7765490139964,  -96.67635695669767],
+  [32.77654678653596, -96.67425800639604],
+  [32.77786806295713, -96.67429591971245],
+  [32.77790021655511, -96.67632445361065]
+];
+
+// Railway (from KML "railway")
+var railCoords = [
+  [32.77795252053196, -96.67615970670091],
+  [32.77785233737946, -96.67613370366479],
+  [32.77766828808206, -96.6761131774059 ],
+  [32.77737632687533, -96.67616269994132],
+  [32.77711199763622, -96.6762785059951 ],
+  [32.77694288327942, -96.67642711932024],
+  [32.77673286987842, -96.6767000754139 ],
+  [32.77669634706,    -96.67674349298375],
+  [32.77662031064227, -96.67671203306728],
+  [32.77672611785751, -96.67655400301086],
+  [32.7768773300257,  -96.67636831466915],
+  [32.77707056997338, -96.67618512191818],
+  [32.77729804479389, -96.67608940913665],
+  [32.77748920284102, -96.67602835166815],
+  [32.77764376204313, -96.67604312874721],
+  [32.77783535421224, -96.67606669762654],
+  [32.77795252053196, -96.67615970670091]
+];
+
+// Prairie Creek (from KML "paire creek")
+var creekCoords = [
+  [32.77759818412399, -96.67472580849552],
+  [32.77746766703419, -96.67474783933308],
+  [32.77721517103969, -96.67465364479871],
+  [32.77690437753989, -96.67450984295002],
+  [32.77660983315948, -96.67439556796208],
+  [32.77656148283417, -96.67372078027005],
+  [32.77665318297588, -96.6737156827437 ],
+  [32.77684168492008, -96.67377291499736],
+  [32.77713103336635, -96.6738770853618 ],
+  [32.77745380174321, -96.67407499092555],
+  [32.77785914532022, -96.67427532423801],
+  [32.7778576511746,  -96.67475877703055],
+  [32.77759818412399, -96.67472580849552]
+];
+
+// Entrance road (from KML "entrance road")
+var entranceCoords = [
+  [32.77787643934904, -96.67491362680173],
+  [32.77787651130289, -96.67485313903245]
+];
+
+// Watershed = same as lot but slightly expanded
+var wsCoords = [
+  [32.7763, -96.6766],
+  [32.7763, -96.6740],
+  [32.7781, -96.6740],
+  [32.7781, -96.6766]
+];
+
+// FEMA Zone AE — east portion of lot (Prairie Creek side)
+var femaCoords = [
+  [32.7765, -96.6745],
+  [32.7765, -96.6738],
+  [32.7781, -96.6738],
+  [32.7781, -96.6745]
+];
+
+// ── NODES — positioned on real lot ───────────────────
+// NW corner area = approx -96.6763, 32.7772
+// NE corner area = approx -96.6745, 32.7778
+// Forney Rd north edge = approx lat 32.7779
+var nodeData = {
+  CB1: { ll:[32.77700,-96.67610], label:'CB #1 — NW Grate Inlet',   type:'Grate Inlet (Top)', sys:'System 1 — Driveway', rim:'525.01 ft', inv:'520.75 ft', q:'6.96 CFS', pipe:'18" HDPE out', col:'#1d9e75' },
+  CB2: { ll:[32.77720,-96.67462], label:'CB #2 — NE Curb Inlet',    type:'Curb Inlet (Side)', sys:'System 2 — Roof',     rim:'525.68 ft', inv:'520.05 ft', q:'2.12 CFS', pipe:'12" HDPE out', col:'#d85a30' },
+  JB1: { ll:[32.77780,-96.67610], label:'JB #1 — Junction Box NW',  type:'Junction Box',       sys:'NW Drainage Easement', rim:'525.00 ft', inv:'520.57 ft', q:'6.96 CFS', pipe:'18" HDPE → 18" Concrete', col:'#888780' },
+  JB2: { ll:[32.77780,-96.67462], label:'JB #2 — Junction Box NE',  type:'Junction Box',       sys:'NE Drainage Easement', rim:'525.50 ft', inv:'519.80 ft', q:'2.12 CFS', pipe:'12" HDPE → 12" Concrete', col:'#888780' },
+  OUT: { ll:[32.77788,-96.67536], label:'Outfall — 21" Public Main', type:'Outfall',            sys:'Forney Rd Public System', rim:'524.89 ft', inv:'519.50 ft', q:'9.08 CFS', pipe:'Both systems combine here', col:'#854f0b' }
+};
+
+var pipeDefs = [
+  { from:'CB1', to:'JB1', col:'#378add', w:4, lbl:'Seg 1 — 18" HDPE @ 0.5% · Q_cap 8.04 CFS' },
+  { from:'JB1', to:'OUT', col:'#185fa5', w:4, lbl:'Seg 2 — 18" Concrete @ 0.5% · Q_cap 7.42 CFS' },
+  { from:'CB2', to:'JB2', col:'#d85a30', w:3, lbl:'Seg 3 — 12" HDPE @ 1.0% · Q_cap 3.86 CFS' },
+  { from:'JB2', to:'OUT', col:'#993c1d', w:3, lbl:'Seg 4 — 12" Concrete @ 0.5% · Q_cap 2.52 CFS' }
+];
+
+function makeIcon(col, sz) {
+  sz = sz || 13;
+  return L.divIcon({
+    html:'<div style="width:'+sz+'px;height:'+sz+'px;background:'+col+';border:2.5px solid white;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,0.35);"></div>',
+    className:'', iconAnchor:[sz/2,sz/2], iconSize:[sz,sz]
+  });
+}
+
+function popupHTML(n) {
+  return '<div style="min-width:190px;font-family:sans-serif;font-size:12px;">'+
+    '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">'+n.label+'</div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;"><span style="color:#999;">Type</span><span style="font-weight:500;">'+n.type+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;"><span style="color:#999;">System</span><span style="font-weight:500;">'+n.sys+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;"><span style="color:#999;">Rim elev.</span><span style="font-weight:500;">'+n.rim+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;"><span style="color:#999;">Invert</span><span style="font-weight:500;">'+n.inv+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;"><span style="color:#999;">Design Q</span><span style="font-weight:500;color:#0f6e56;">'+n.q+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:#999;">Pipe</span><span style="font-weight:500;">'+n.pipe+'</span></div>'+
+    '</div>';
+}
+
+// ── BUILD LAYERS ──────────────────────────────────────
+var lys = {};
+
+lys.lot = L.polygon(lotCoords, {
+  color:'#333', weight:2, dashArray:'5 3', fillColor:'#c8c2aa', fillOpacity:0.25
+}).addTo(map).bindPopup('<b>Lot Boundary</b><br>181,868 sq ft · 3.716 acres<br>8414 Forney Rd, Dallas TX');
+
+lys.ws = L.polygon(wsCoords, {
+  color:'#1d9e75', weight:2, dashArray:'7 4', fillColor:'#1d9e75', fillOpacity:0.05
+}).addTo(map).bindPopup('<b>Watershed Boundary</b><br>Contributing area: 3.716 acres<br>Drains to 21" public main under Forney Rd');
+
+lys.creek = L.polygon(creekCoords, {
+  color:'#2196f3', weight:1.5, fillColor:'#2196f3', fillOpacity:0.2
+}).addTo(map).bindPopup('<b>Prairie Creek</b><br>FEMA Zone AE — 1% annual chance floodplain<br>Eastern boundary of lot');
+
+lys.rail = L.polygon(railCoords, {
+  color:'#666', weight:1.5, fillColor:'#888', fillOpacity:0.35
+}).addTo(map).bindPopup('<b>Railway</b><br>Union Pacific Railroad<br>26\' Spur Easement');
+
+lys.road = L.polyline(entranceCoords, {
+  color:'#ff9800', weight:4, opacity:0.8
+}).addTo(map).bindPopup('<b>Entrance Road</b><br>Site access from Forney Rd');
+
+lys.fema = L.polygon(femaCoords, {
+  color:'#2196f3', weight:1, dashArray:'4 3', fillColor:'#2196f3', fillOpacity:0.12
+}).addTo(map).bindPopup('<b>FEMA Zone AE</b><br>1% annual chance floodplain');
+
+lys.pipes = L.layerGroup(pipeDefs.map(function(p){
+  var f = nodeData[p.from].ll, t = nodeData[p.to].ll;
+  return L.polyline([f,t], { color:p.col, weight:p.w, opacity:0.9 })
+    .bindPopup('<b>'+p.lbl+'</b><br>Design Q: 6.96 CFS (Sys 1) / 2.12 CFS (Sys 2)<br>Capacity > Design Q ✓<br>Velocity > 2.0 ft/s ✓');
+})).addTo(map);
+
+lys.nodes = L.layerGroup(Object.values(nodeData).map(function(n){
+  return L.marker(n.ll, { icon:makeIcon(n.col, n.label.includes('Outfall') ? 15 : 12) })
+    .bindPopup(popupHTML(n));
+})).addTo(map);
+
+function toggleLayer(name, show) {
+  if (show) lys[name].addTo(map);
+  else map.removeLayer(lys[name]);
+}
+
+L.control.scale({ imperial:true, metric:true }).addTo(map);
+</script>
+</body>
+</html>
